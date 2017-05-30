@@ -10,6 +10,8 @@ from modules.configobj import ConfigObj
 from modules.pathutils import *
 import urllib
 from modules.gitdox_sql import *
+from modules.ether import delete_spreadsheet
+from paths import ether_url, get_menu
 from os.path import isfile, join
 import platform
 
@@ -20,15 +22,6 @@ else:
 	prefix = ""
 
 project = "Scriptorium"
-
-def perform_action(text_content, logging=True):
-	#this is used to write information into a text file to serve as a debugging tool and log
-	#change logging=True to start logging
-	if logging:
-		f=open(prefix+"hwak.txt","a")
-		f.write('\n')
-		f.write(text_content)
-		f.close()
 
 
 def make_options(**kwargs):
@@ -47,7 +40,10 @@ def make_options(**kwargs):
 	return options
 
 def cell(text):
-	return "<td>" + str(text) + "</td>"
+	if 'class="fa' in str(text):
+		return '<td style="text-align:center">' + str(text) + "</td>"
+	else:
+		return "<td>" + str(text) + "</td>"
 
 def get_max_id():
 	#get current max of existing records in the db
@@ -96,64 +92,85 @@ def gen_meta_popup():
 
 
 def load_landing(user,admin,theform):
-	perform_action('user='+user)
-	perform_action('admin='+admin)
 	gen_meta_popup()
 
 	if theform.getvalue('deletedoc'):
-		docid=theform.getvalue('id')
-		delete_doc(docid)
+		doc_id = theform.getvalue('id')
+		doc_name, corpus = get_doc_info(doc_id)[0:2]
+		delete_doc(doc_id)
+		sheet_name = "gd_" + corpus + "_" + doc_name
+		delete_spreadsheet(ether_url,sheet_name)
 
-	#docs_list=generic_query("SELECT * FROM docs","")
-	docs_list=generic_query("SELECT id,name,status,assignee_username,filename FROM docs",())
+	selected_corpus = ""
+	corpora = get_corpora()
+	corpus_list = '<option value="all">(show all)</option>\n'
+	for corpus in corpora:
+		corpus_list += '<option value="'+corpus[0]+'">'+corpus[0]+'</option>\n'
+	if "sel_corpus" in theform:
+		selected_corpus = theform.getvalue("sel_corpus")
+		corpus_list = corpus_list.replace('="'+selected_corpus+'"','="'+selected_corpus+'" selected="selected"')
 
-	max_id=get_max_id()
+	if selected_corpus != "" and selected_corpus != "all":
+		doc_list = generic_query("SELECT id,corpus,name,status,assignee_username,mode FROM docs where corpus=? ORDER BY corpus, name COLLATE NOCASE", (selected_corpus,))
+		if len(doc_list) == 0: # Restricted query produced no documents, switch back to all document display 
+			doc_list = generic_query("SELECT id,corpus,name,status,assignee_username,mode FROM docs ORDER BY corpus, name COLLATE NOCASE", ())
+			selected_corpus = ""
+	else:
+		doc_list = generic_query("SELECT id,corpus,name,status,assignee_username,mode FROM docs ORDER BY corpus, name COLLATE NOCASE",())
+
+	max_id = get_max_id()
 	if not max_id:  # This is for the initial case after init db
-		max_id=0
-	
-	#for each doc in the doc list, just display doc[:-1], since last col is content
+		max_id = 0
 
-	table="""<table id="doctable" class="sortable"><tr><th>id</th><th>doc name</th><th>status</th><th>assigned</th><th>GitRepo</th><th colspan="2" class="sorttable_nosort">actions</th></tr>"""
+	table = """<table id="doctable" class="sortable"><tr><th>id</th><th>corpus</th><th>document</th><th>status</th><th>assigned</th><th>mode</th><th colspan="2" class="sorttable_nosort">actions</th></tr>"""
 
-	for doc in docs_list:
+	for doc in doc_list:
 		row="<tr>"
 		for item in doc:
-			
-			row+=cell(item)
+			if item == "xml":
+				item = '<i class="fa fa-code" title="xml">&nbsp;</i>'
+			elif item == "ether":
+				item = '<i class="fa fa-table" title="spreadsheet">&nbsp;</i>'
+			elif "-" in str(item):
+				item = item.replace("-","&#8209;")  # Use non-breaking hyphens
+			row += cell(item)
 		id=str(doc[0])
 		#edit document
 		button_edit="""<form action="editor.py" method="post" id="form_edit_"""+id+"""">"""
 		id_code="""<input type="hidden" name="id"  value="""+id+">"
 		button_edit+=id_code
-		#button_edit+="""<input type="submit" value="EDIT DOCUMENT"></form>	"""
 		button_edit+="""<div onclick="document.getElementById('form_edit_"""+id+"""').submit();" class="button"> <i class="fa fa-pencil-square-o"></i> edit</div></form>"""
 
 		#delete document
 		button_delete="""<form action="index.py" method="post" id="form_del_"""+id+"""">"""
 		button_delete+=id_code
-		#button_delete+="""<input type='submit' name='deletedoc'  value='DELETE DOCUMENT'></form>"""
-		button_delete+="""<input type="hidden" name='deletedoc' value='DELETE DOCUMENT'/><div onclick="document.getElementById('form_del_"""+id+"""').submit();" class="button"> <i class="fa fa-trash-o"></i> delete</div></form>"""
+		button_delete+="""<input type="hidden" name='deletedoc' value='DELETE DOCUMENT'/><div onclick="document.getElementById('form_del_"""+id+"""').submit();" class="button"> <i class="fa fa-trash-o"></i> delete</div>
+		<input type="hidden" name="sel_corpus" value="**sel_corpus**"></form>"""
 
-		row+=cell(button_edit)
-		row+=cell(button_delete)
-		row+="</tr>"
-		table+=row
+		row += cell(button_edit)
+		row += cell(button_delete)
+		row += "</tr>"
+		table += row
 		
 	table+="</table>"
 
-	page= ""
+	page = ""
+
+	menu = get_menu()
+	menu = menu.encode("utf8")
+
 	landing = open(prefix+"templates"+os.sep+"landing.html").read()
 	landing = landing.replace("**max_id_plus1**",str(max_id+1))
 	landing = landing.replace("**user**",user)
 	landing = landing.replace("**project**",project)
+	landing = landing.replace("**corpora**",corpus_list)
+	landing = landing.replace("**sel_corpus**",selected_corpus)
 	landing = landing.replace("**table**",table)
+	landing = landing.replace("**navbar**", menu)
 	page += landing
 	print "Content-type:text/html\n\n"
 
 	return page
-
-
-
 
 
 def open_main_server():
@@ -169,4 +186,3 @@ def open_main_server():
 
 
 open_main_server()
-
