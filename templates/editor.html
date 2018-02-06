@@ -4,14 +4,15 @@
 
 
 <head>
-<link rel="stylesheet" href="css/scriptorium.css" type="text/css" charset="utf-8"/>
-<link rel="stylesheet" href="css/gitdox.css" type="text/css" charset="utf-8"/>
+<link rel="stylesheet" href="**skin**" type="text/css" charset="utf-8"/>
+<link rel="stylesheet" href="css/gitdox.css?version=2" type="text/css" charset="utf-8"/>
 <link rel="stylesheet" href="css/font-awesome-4.7.0/css/font-awesome.min.css"/>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=800">
 <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
 <link rel="icon" href="favicon.ico" type="image/x-icon">
 <script src="js/jquery-1.11.3.min.js"></script>
+<script src="js/editor.js"></script>
 
 <!--The following script tag downloads a font from the Adobe Edge Web Fonts server for use within the web page. We recommend that you do not modify it.-->
 <script>var __adobewebfontsappname__="dreamweaver"</script>
@@ -39,29 +40,10 @@ td, th {
 <body>
 **navbar**
 <div id="wrapper">
-		<div id="header">
-			<div id="copticlogo">
-				<a href="http://copticscriptorium.org/">
-					<img id="img1" src="https://corpling.uis.georgetown.edu/coptic-nlp/img/copticlogo.png" width="210" height="101" alt="Coptic SCRIPTORIUM"/>
-				</a>
-			</div>
-			<div id="unicorn">
-				<a href="http://copticscriptorium.org/">
-					<img id="img2" src="https://corpling.uis.georgetown.edu/coptic-nlp/img/unicorn.png" width="80" height="101" alt="Unicorn"/>
-				</a>
-			</div>
-			<div id="englishlogo">
-				<a href="http://copticscriptorium.org/">
-					<img id="img3" src="https://corpling.uis.georgetown.edu/coptic-nlp/img/englishlogo.png" width="199" height="101" alt="Coptic SCRIPTORIUM"/>
-				</a>
-			</div>
-			<img id="img4" src="img/ruleline.png" width="100%" height="14" alt=""/>
-			</br>
-			</br>
-		</div>
+		**header**
     <div id="content">
 <h1>GitDox: Edit</h1>
-			<p>For help getting started see the <a target="_wiki" href="http://wiki.copticscriptorium.org/doku.php?id=gitdox_workflow">wiki</a></p>
+			**editor_help_link**
 <hr>
 
 <div>
@@ -84,7 +66,10 @@ td, th {
 
 <form name="hiddenForm" id="editor_form" method="post" action="editor.py" enctype="multipart/form-data">
 <input type="hidden" name="id" id="id" value="**id**">
-<input type="hidden" name="nlp_service" id="nlp_service">
+<input type="hidden" name="mode" id="mode" value="**mode**">
+<input type="hidden" name="schema" id="schema" value="**schema**">
+<input type="hidden" name="nlp_xml" id="nlp_xml">
+<input type="hidden" name="nlp_spreadsheet" id="nlp_spreadsheet">
     <h2>Editor | <a href="index.py">back to document list</a> </h2>
 
 <table id="doc_data" style="background:#eee;padding:5pt;">
@@ -97,11 +82,16 @@ td, th {
 		<input type="text" id="edit_docname" name="edit_docname" defaultValue="**docname**" value="**docname**" onblur="validate_docname();">
 		<div onclick="document.getElementById('editor_form').submit();" class="button slim"><i class="fa fa-floppy-o"> </i></div>
 	</td>
+	<td><div class="button" id="validate_editor" onclick="validate_doc();">Validate</div></td>
 </tr>
 <tr><td>Corpus Name: </td>
 	<td>
 		<input type="text" id="edit_corpusname" name="edit_corpusname" defaultValue="**corpusname**" value="**corpusname**" onblur="validate_corpusname();">
 		<div onclick="document.getElementById('editor_form').submit();" class="button slim"><i class="fa fa-floppy-o"> </i></div>
+	</td>
+	<td rowspan="6" class="report_container">
+	<div id="validation_report">
+	</div>
 	</td>
 </tr>
 <tr>
@@ -110,28 +100,19 @@ td, th {
 		<div onclick="document.getElementById('editor_form').submit();" class="button slim"><i class="fa fa-floppy-o"> </i></div>
 	</td>
 </tr>
+<tr><td>XML Schema:</td><td>**edit_schema**</td></tr>
 <tr><td>Assigned to:</td><td>**edit_assignee**</td></tr>
 <tr><td>Status:</td><td>**edit_status**</td></tr>
 <tr><td>Mode:</td><td>**edit_mode**</td></tr>
 </tbody>
 </table>
 
+
 **embedded_editor**
 
 
 <h3>meta data</h3>
 **metadata**
-
-<SCRIPT LANGUAGE="JavaScript"><!--
-myPopup = '';
-
-function openPopup(url) {
-    myPopup = window.open(url,'popupWindow','width=640,height=480');
-    if (!myPopup.opener)
-         myPopup.opener = self;
-}
-
-//--></SCRIPT>
 
 
 <div class="button" onClick="openPopup('popupPage.html')"><i class="fa fa-info-circle"> </i> Add meta</div>

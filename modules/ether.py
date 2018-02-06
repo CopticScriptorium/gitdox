@@ -13,7 +13,7 @@ from collections import defaultdict
 from collections import OrderedDict
 from operator import itemgetter
 from gitdox_sql import *
-
+import json
 import cgi
 
 __version__ = "2.0.0"
@@ -45,7 +45,8 @@ def number_to_letter(number):
 	else:
 		return None
 
-def sgml_to_ether(sgml):
+
+def sgml_to_ether(sgml, ignore_elements=False):
 	sgml = sgml.replace("\r","")
 	current_row = 2
 	open_annos = defaultdict(list)
@@ -97,7 +98,7 @@ version:1.5
 			anno_name = ""
 			anno_value = ""
 			for match in my_match:
-				if element != match[0]:
+				if element != match[0] and ignore_elements is False:
 					anno_name = element + "_" + match[0]
 				else:
 					anno_name = match[0]
@@ -174,7 +175,12 @@ def ether_to_sgml(ether, doc_id):
 	cells = sorted(cells, key=itemgetter(1)) # so header row gets read first
 
 	open_tags = defaultdict(lambda: defaultdict(list))
+	last_open_index = defaultdict(int)
+	open_tag_length = defaultdict(int)
+	open_tag_order = defaultdict(list)
+	last_row = 1
 	toks = {}
+	row = 1
 
 	close_tags = defaultdict(list)
 	for cell in cells:
@@ -184,8 +190,20 @@ def ether_to_sgml(ether, doc_id):
 		else:
 			col = cell[0]
 			row = cell[1]
+			if row != last_row:  # New row starting, sort previous lists for opening and closing orders
+				close_tags[row].sort(key=lambda x: (-last_open_index[x],x))
+				for element in open_tags[last_row]:
+					open_tag_order[last_row].append(element)
+				open_tag_order[last_row].sort(key=lambda x: (open_tag_length[x],x), reverse=True)
+				last_row = row
 			col_name = colmap[col]
-			content = cell[2]['t']
+			if 't' in cell[2]:  # cell contains text
+				content = cell[2]['t']
+			elif 'v' in cell[2]: # cell contains numerical value
+				content = cell[2]['v']
+			elif col_name != 'tok':
+				continue  # cell does not contain a value and this is not a token entry
+
 			if col_name == 'tok':
 				toks[row] = content
 			else:
@@ -193,6 +211,7 @@ def ether_to_sgml(ether, doc_id):
 				attrib = col_name
 
 				open_tags[row][element].append((attrib, content))
+				last_open_index[element] = int(row)
 
 				if 'rowspan' in cell[2]:
 					rowspan = int(cell[2]['rowspan'])
@@ -201,6 +220,15 @@ def ether_to_sgml(ether, doc_id):
 					close_row = row + 1
 				if element not in close_tags[close_row]:
 					close_tags[close_row].append(element)
+				open_tag_length[element] = int(close_row) - int(last_open_index[element])
+
+	# Sort last row tags
+	close_tags[row].sort(key=lambda x: (-last_open_index[x], x))
+	if row + 1 in close_tags:
+		close_tags[row+1].sort(key=lambda x: (-last_open_index[x], x))
+	for element in open_tags[last_row]:
+		open_tag_order[last_row].append(element)
+	open_tag_order[last_row].sort(key=lambda x: (open_tag_length[x], x), reverse=True)
 
 	meta = "<meta"
 	meta_items = []
@@ -208,9 +236,10 @@ def ether_to_sgml(ether, doc_id):
 	# docid,metaid,key,value - four cols
 	for item in meta_rows:
 		key, value = item[2], item[3]
-		key = key.replace("=","&equals;")
-		value = value.replace('"',"&quot;")
-		meta_items.append(key + '="' + value + '"')
+		if not key.startswith("ignore:"):
+			key = key.replace("=","&equals;")
+			value = value.replace('"',"&quot;")
+			meta_items.append(key + '="' + value + '"')
 
 	meta_props = " ".join(meta_items)
 	if meta_props != "":
@@ -218,13 +247,15 @@ def ether_to_sgml(ether, doc_id):
 	output = meta + meta_props + ">\n"
 
 	for r in xrange(2,len(toks)+3):
+		if r == 30:
+			pass
 		for element in close_tags[r]:
 			output += '</' + element + '>\n'
 
 		if r == len(toks)+2:
 			break
 
-		for element in open_tags[r]:
+		for element in open_tag_order[r]:
 			tag = '<' + element
 			for attrib, value in open_tags[r][element]:
 				tag += ' ' + attrib + '="' + value + '"'
@@ -247,6 +278,7 @@ def exec_via_temp(input_text, command_params, workdir=""):
 
 		#command_params = [x if 'tempfilename' not in x else x.replace("tempfilename",temp.name) for x in command_params]
 		command_params = command_params.replace("tempfilename",temp.name)
+
 		if workdir == "":
 			proc = subprocess.Popen(command_params, stdout=subprocess.PIPE,stdin=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
 			(stdout, stderr) = proc.communicate()
@@ -261,16 +293,23 @@ def exec_via_temp(input_text, command_params, workdir=""):
 		return stdout, stderr
 
 
-def make_spreadsheet(data,ether_path,format="sgml"):
+def fix_colnames(socialcalc):
+	socialcalc = re.sub(r'(:[A-Z]1:t:)norm_group_(orig_group:)',r'\1\2',socialcalc)
+	socialcalc = re.sub(r'(:[A-Z]1:t:)norm_(orig|pos|lemma:)', r'\1\2', socialcalc)
+	return socialcalc
+
+
+def make_spreadsheet(data, ether_path, format="sgml", ignore_elements=False):
 	if format=="sgml":
-		socialcalc_data = sgml_to_ether(data)
-		ether_command = "curl --request PUT --header 'Content-Type: text/x-socialcalc' --data-binary @tempfilename " + ether_path  # e.g. ether_path "http://127.0.0.1:8000/_/nlp_snippet"
+		socialcalc_data = sgml_to_ether(data, ignore_elements)
+		socialcalc_data = fix_colnames(socialcalc_data)
+		ether_command = "curl --netrc --request PUT --header 'Content-Type: text/x-socialcalc' --data-binary @tempfilename " + ether_path  # e.g. ether_path "http://127.0.0.1:8000/_/nlp_snippet"
 	elif format=="socialcalc":
 		socialcalc_data = data.encode("utf8")
-		ether_command = "curl --request PUT --header 'Content-Type: text/x-socialcalc' --data-binary @tempfilename " + ether_path  # e.g. ether_path "http://127.0.0.1:8000/_/nlp_snippet"
+		ether_command = "curl --netrc --request PUT --header 'Content-Type: text/x-socialcalc' --data-binary @tempfilename " + ether_path  # e.g. ether_path "http://127.0.0.1:8000/_/nlp_snippet"
 	else:
 		socialcalc_data = data
-		ether_command = "curl -i -X PUT --data-binary @tempfilename " + ether_path # e.g. ether_path "http://127.0.0.1:8000/_/nlp_snippet"
+		ether_command = "curl --netrc -i -X PUT --data-binary @tempfilename " + ether_path # e.g. ether_path "http://127.0.0.1:8000/_/nlp_snippet"
 	#ether_command = ["curl","--request","PUT","--header","'Content-Type: text/x-socialcalc'", "--data-binary", "@" + "tempfilename",
 	#				 ether_path] # e.g. ether_path "http://127.0.0.1:8000/_/nlp_snippet"
 	#ether_command = ["less","tempfilename",">","/var/www/html/gitdox/out.eth"]
@@ -289,7 +328,7 @@ def delete_spreadsheet(ether_url, name):
 	:return: void
 	"""
 
-	ether_command = "curl -X DELETE " + ether_url + "_/" + name
+	ether_command = "curl --netrc -X DELETE " + ether_url + "_/" + name
 	del_proc = subprocess.Popen(ether_command,shell=True)
 
 	(stdout, stderr) = del_proc.communicate()
@@ -302,10 +341,21 @@ def sheet_exists(ether_path, name):
 
 
 def get_socialcalc(ether_path, name):
-	command = "curl -X GET " + ether_path + "_/" + name
+	command = "curl --netrc -X GET " + ether_path + "_/" + name
 	proc = subprocess.Popen(command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 	(stdout, stderr) = proc.communicate()
 	return stdout.decode("utf8")
+
+
+def get_timestamps(ether_path):
+	command = "curl --netrc -X GET " + ether_path + "_roomtimes"
+	proc = subprocess.Popen(command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+	(stdout, stderr) = proc.communicate()
+	times = json.loads(stdout)
+	output = {}
+	for room in times:
+		output[room.replace("timestamp-","")] = times[room]
+	return output
 
 
 if __name__  == "__main__":
@@ -320,4 +370,4 @@ if __name__  == "__main__":
 	data = re.sub('</', '\n</', data)
 	data = re.sub('\n+', '\n', data)
 	ether_out = sgml_to_ether(data)
-	print ether_out
+	print(ether_out)

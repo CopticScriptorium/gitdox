@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 # Import modules for CGI handling
-import cgi, cgitb 
+import cgi, cgitb
 import os
 from os import listdir
 from modules.logintools import login
@@ -28,7 +28,6 @@ def make_options(**kwargs):
 	if "file" in kwargs:
 		kwargs["file"] = prefix + kwargs["file"]
 		names = open(kwargs["file"],'r').read().replace("\r","").split("\n")
-		#print len(names)
 		names = list(name[:name.find("\t")] for name in names)
 	elif "names" in kwargs:
 		names = kwargs[names]
@@ -54,44 +53,40 @@ def get_max_id():
 
 
 def gen_meta_popup():
-	popup_meta_html="""
-	<HTML>
-	<HEAD>
-	<SCRIPT LANGUAGE="JavaScript"><!--
-	function copyForm() {
-		opener.document.hiddenForm.metakey.value = document.popupForm.metakey.value;
-		opener.document.hiddenForm.metavalue.value = document.popupForm.metavalue.value;
+	popup_meta_html="""<HTML>
+<HEAD>
+<SCRIPT LANGUAGE="JavaScript">
+function copyForm() {
+	opener.document.hiddenForm.metakey.value = document.popupForm.metakey.value;
+	opener.document.hiddenForm.metavalue.value = document.popupForm.metavalue.value;
 
-		opener.document.hiddenForm.submit();
-		window.close();
-		return false;
-	}
-	//--></SCRIPT>
-	</HEAD>
-	<BODY>
-	<FORM NAME="popupForm" onSubmit="return copyForm()">
-	meta key (e.g.,year):<br>
-	<input list="metakeys" name="metakey">
-	<datalist id="metakeys">
-		***options***
-	</datalist>
-	<br>
-	meta value(e.g.,200BC):<br>
-	<input type="text" name='metavalue'><br>
-	<INPUT TYPE="BUTTON" VALUE="Submit" onClick="copyForm()">
-	</FORM>
-	</BODY>
-	</HTML>
-
-
-	"""
-	options=make_options(file='metadata_fields.tab')
-	popup_meta_html=popup_meta_html.replace("***options***",options)
-	f=open(prefix+'popupPage.html','w')
+	opener.document.hiddenForm.submit();
+	window.close();
+	return false;
+}
+</SCRIPT>
+</HEAD>
+<BODY>
+<FORM NAME="popupForm" onSubmit="return copyForm()">
+field name (e.g., short_name):<br>
+<input list="metakeys" name="metakey">
+<datalist id="metakeys">
+***options**
+</datalist>
+<br>
+field value (e.g., superman):<br>
+<input type="text" name='metavalue'><br>
+<INPUT TYPE="BUTTON" VALUE="Submit" onClick="copyForm()">
+</FORM>
+</BODY>
+</HTML>"""
+	options = make_options(file='metadata_fields.tab')
+	popup_meta_html = popup_meta_html.replace("***options**",options)
+	f = open(prefix + 'popupPage.html', 'w')
 	f.write(popup_meta_html)
 
 
-def load_landing(user,admin,theform):
+def load_landing(user, admin, theform):
 	gen_meta_popup()
 
 	if theform.getvalue('deletedoc'):
@@ -112,7 +107,7 @@ def load_landing(user,admin,theform):
 
 	if selected_corpus != "" and selected_corpus != "all":
 		doc_list = generic_query("SELECT id,corpus,name,status,assignee_username,mode FROM docs where corpus=? ORDER BY corpus, name COLLATE NOCASE", (selected_corpus,))
-		if len(doc_list) == 0: # Restricted query produced no documents, switch back to all document display 
+		if len(doc_list) == 0: # Restricted query produced no documents, switch back to all document display
 			doc_list = generic_query("SELECT id,corpus,name,status,assignee_username,mode FROM docs ORDER BY corpus, name COLLATE NOCASE", ())
 			selected_corpus = ""
 	else:
@@ -122,53 +117,103 @@ def load_landing(user,admin,theform):
 	if not max_id:  # This is for the initial case after init db
 		max_id = 0
 
-	table = """<table id="doctable" class="sortable"><tr><th>id</th><th>corpus</th><th>document</th><th>status</th><th>assigned</th><th>mode</th><th colspan="2" class="sorttable_nosort">actions</th></tr>"""
+	table = """<script src="js/index.js"></script><table id="doctable" class="sortable">"""
+	table += """<thead><tr><th>id</th><th>corpus</th><th>document</th><th>status</th><th>assigned</th><th>mode</th><th>validate</th><th colspan="2" class="sorttable_nosort">actions</th></tr></thead>"""
+	table += """<tfoot><tr><td><input type="text" id="filter_id" onkeyup="filter()"></td>
+					<td><input type="text" id="filter_corpus" onkeyup="filter()"></td>
+					<td><input type="text" id="filter_document" onkeyup="filter()"></td>
+					<td><input type="text" id="filter_status" onkeyup="filter()"></td>
+					<td><input type="text" id="filter_assigned" onkeyup="filter()"></td>
+					<td><input type="text" id="filter_mode" onkeyup="filter()" placeholder="xml/spreadsheet"></td>
+					<td></td>
+					<td colspan="2"></td></tr></tfoot>"""
+	table += """<tbody>"""
 
 	for doc in doc_list:
 		row="<tr>"
 		for item in doc:
 			if item == "xml":
 				item = '<i class="fa fa-code" title="xml">&nbsp;</i>'
+				mode = "xml"
 			elif item == "ether":
 				item = '<i class="fa fa-table" title="spreadsheet">&nbsp;</i>'
+				mode = "ether"
 			elif "-" in str(item):
 				item = item.replace("-","&#8209;")  # Use non-breaking hyphens
 			row += cell(item)
-		id=str(doc[0])
-		#edit document
-		button_edit="""<form action="editor.py" method="post" id="form_edit_"""+id+"""">"""
-		id_code="""<input type="hidden" name="id"  value="""+id+">"
-		button_edit+=id_code
-		button_edit+="""<div onclick="document.getElementById('form_edit_"""+id+"""').submit();" class="button"> <i class="fa fa-pencil-square-o"></i> edit</div></form>"""
+		id = str(doc[0])
+
+		# validation icons
+		icons = """<div id="validate_""" + id + """">"""
+		if mode == "xml":
+			icons += """<i class="fa fa-code" title="xml">&nbsp;</i>"""
+		elif mode == "ether":
+			icons += """<i class="fa fa-table" title="spreadsheet">&nbsp;</i>"""
+		icons += """<i class="fa fa-tags" title="metadata" style="display:inline-block">&nbsp;</i>"""
+		icons += """</div>"""
+
+		# edit document
+		button_edit = """<form action="editor.py" method="post" id="form_edit_""" + id + """">"""
+		id_code = """<input type="hidden" name="id"  value=""" + id + ">"
+		button_edit += id_code
+		button_edit += """<div onclick="document.getElementById('form_edit_""" + id + """').submit();" class="button"> <i class="fa fa-pencil-square-o"></i> edit</div></form>"""
 
 		#delete document
 		button_delete="""<form action="index.py" method="post" id="form_del_"""+id+"""">"""
 		button_delete+=id_code
-		button_delete+="""<input type="hidden" name='deletedoc' value='DELETE DOCUMENT'/><div onclick="document.getElementById('form_del_"""+id+"""').submit();" class="button"> <i class="fa fa-trash-o"></i> delete</div>
-		<input type="hidden" name="sel_corpus" value="**sel_corpus**"></form>"""
+		if int(admin) > 0:
+			button_delete+="""<input type="hidden" name='deletedoc' value='DELETE DOCUMENT'/><div onclick="document.getElementById('form_del_"""+id+"""').submit();" class="button"> <i class="fa fa-trash-o"></i> delete</div>
+			<input type="hidden" name="sel_corpus" value="**sel_corpus**"></form>"""
+		else:
+			button_delete += """<input type="hidden" name='deletedoc' value='DELETE DOCUMENT'/><div class="button disabled"> <i class="fa fa-trash-o"></i> delete</div>
+		    <input type="hidden" name="sel_corpus" value="**sel_corpus**"></form>"""
 
+		row += cell(icons)
 		row += cell(button_edit)
 		row += cell(button_delete)
 		row += "</tr>"
 		table += row
-		
-	table+="</table>"
+
+	table+="</tbody></table>"
+
+	if admin == "3":
+		validation_rules = """<form action='validation_rules.py' id="form_validation_rules" method="post" style="display:inline-block">
+		<div onclick="document.getElementById('form_validation_rules').submit();" class="button">
+  		<i class="fa fa-table"></i>
+		validation rules</div></form>"""
+	else:
+		validation_rules = ""
 
 	page = ""
 
 	menu = get_menu()
 	menu = menu.encode("utf8")
 
-	landing = open(prefix+"templates"+os.sep+"landing.html").read()
-	landing = landing.replace("**max_id_plus1**",str(max_id+1))
-	landing = landing.replace("**user**",user)
-	landing = landing.replace("**project**",project)
-	landing = landing.replace("**corpora**",corpus_list)
-	landing = landing.replace("**sel_corpus**",selected_corpus)
-	landing = landing.replace("**table**",table)
+	landing = open(prefix + "templates" + os.sep + "landing.html").read()
+	header = open(prefix + "templates" + os.sep + "header.html").read()
+
+	scriptpath = os.path.dirname(os.path.realpath(__file__)) + os.sep
+	userdir = scriptpath + "users" + os.sep
+	config = ConfigObj(userdir + 'config.ini')
+	skin = config["skin"]
+	project = config["project"]
+
+	landing = landing.replace("**max_id_plus1**", str(max_id + 1))
+	landing = landing.replace("**user**", user)
+	landing = landing.replace("**project**", project)
+	landing = landing.replace("**header**", header)
+	landing = landing.replace("**skin**", skin)
+	landing = landing.replace("**validation_rules**", validation_rules)
+	landing = landing.replace("**corpora**", corpus_list)
+	landing = landing.replace("**sel_corpus**", selected_corpus)
+	landing = landing.replace("**table**", table)
 	landing = landing.replace("**navbar**", menu)
+	if int(admin) > 0:
+		landing = landing.replace("**create_doc**",'''onclick="document.getElementById('form_new').submit();" class="button"''')
+	else:
+		landing = landing.replace("**create_doc**",'''class="button disabled"''')
 	page += landing
-	print "Content-type:text/html\n\n"
+	print("Content-type:text/html\n\n")
 
 	return page
 
@@ -179,10 +224,11 @@ def open_main_server():
 	theform = cgi.FieldStorage()
 	scriptpath = os.path.dirname(os.path.realpath(__file__)) + os.sep
 	userdir = scriptpath + "users" + os.sep
+
 	action, userconfig = login(theform, userdir, thisscript, action)
 	user = userconfig["username"]
 	admin = userconfig["admin"]
-	print load_landing(user,admin,theform)
+	print(load_landing(user,admin,theform))
 
 
 open_main_server()
