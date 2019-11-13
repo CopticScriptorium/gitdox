@@ -1,1 +1,7 @@
+six
 lxml
+requests
+github3.py
+passlib
+pystache
+redis

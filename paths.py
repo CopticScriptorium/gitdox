@@ -1,21 +1,29 @@
 import requests, os, platform
 from modules.configobj import ConfigObj
 
-# URL for ethercalc spreadsheets, possible including authentication
-# e.g. http://mydomain.com/ethercalc/
-# to use password authentication, use a netrc file called .netrc in the project root
-ether_url = "http://mydomain.com/ethercalc/"
-
 # Support IIS site prefix on Windows
 if platform.system() == "Windows":
 	prefix = "transc\\"
 else:
 	prefix = ""
 
+gitdox_root = os.path.dirname(os.path.realpath(__file__))
+
+# to use password authentication, use a netrc file called .netrc in the project root
+try:
+	ether_url = ConfigObj(gitdox_root + os.sep + "users" + os.sep + "config.ini")["ether_url"]
+	if not ether_url.endswith(os.sep):
+		ether_url += os.sep
+except KeyError:
+	ether_url = ""
 
 def get_menu():
 	config = ConfigObj(prefix + "users" + os.sep + "config.ini")
+
+	if "banner" not in config:
+		return ""
 	banner = config["banner"]
+
 	if banner.startswith("http"):  # Web resource
 		resp = requests.get(banner)
 		return resp.text
